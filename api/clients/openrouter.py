@@ -1,7 +1,7 @@
 """OpenRouter ModelClient integration."""
 
 import json
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import aiohttp
 from adalflow.core.model_client import ModelClient
@@ -37,9 +37,16 @@ class OpenRouterClient(ModelClient):
         ```
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        base_url: str = "https://openrouter.ai/api/v1",
+        **kwargs,
+    ) -> None:
         """Initialize the OpenRouter client."""
-        super().__init__(*args, **kwargs)
+        super().__init__(**kwargs)
+        self._api_key = api_key
+        self._base_url = base_url.rstrip("/")
         self.sync_client = self.init_sync_client()
         self.async_client = None  # Initialize async client only when needed
 
@@ -47,23 +54,23 @@ class OpenRouterClient(ModelClient):
         """Initialize the synchronous OpenRouter client."""
         from api.config import OPENROUTER_API_KEY
 
-        api_key = OPENROUTER_API_KEY
+        api_key = self._api_key or OPENROUTER_API_KEY
         if not api_key:
             log.warning("OPENROUTER_API_KEY not configured")
 
         # OpenRouter doesn't have a dedicated client library, so we'll use requests directly
-        return {"api_key": api_key, "base_url": "https://openrouter.ai/api/v1"}
+        return {"api_key": api_key, "base_url": self._base_url}
 
     def init_async_client(self):
         """Initialize the asynchronous OpenRouter client."""
         from api.config import OPENROUTER_API_KEY
 
-        api_key = OPENROUTER_API_KEY
+        api_key = self._api_key or OPENROUTER_API_KEY
         if not api_key:
             log.warning("OPENROUTER_API_KEY not configured")
 
         # For async, we'll use aiohttp
-        return {"api_key": api_key, "base_url": "https://openrouter.ai/api/v1"}
+        return {"api_key": api_key, "base_url": self._base_url}
 
     def convert_inputs_to_api_kwargs(
         self, input: Any, model_kwargs: Dict = None, model_type: ModelType = None
