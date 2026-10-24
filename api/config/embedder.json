@@ -1,7 +1,11 @@
 {
   "embedder": {
     "client_class": "OpenAIClient",
-    "batch_size": 500,
+    "initialize_kwargs": {
+      "api_key": "${OPENAI_API_KEY}",
+      "base_url": "${OPENAI_BASE_URL}"
+    },
+    "batch_size": 16,
     "model_kwargs": {
       "model": "text-embedding-3-small",
       "dimensions": 256,
@@ -10,24 +14,9 @@
   },
   "embedder_ollama": {
     "client_class": "OllamaClient",
+    "batch_size": 16,
     "model_kwargs": {
-      "model": "nomic-embed-text"
-    }
-  },
-  "embedder_google": {
-    "client_class": "GoogleEmbedderClient",
-    "batch_size": 100,
-    "model_kwargs": {
-      "model": "gemini-embedding-001",
-      "task_type": "SEMANTIC_SIMILARITY"
-    }
-  },
-  "embedder_bedrock": {
-    "client_class": "BedrockClient",
-    "batch_size": 100,
-    "model_kwargs": {
-      "model": "amazon.titan-embed-text-v2:0",
-      "dimensions": 256
+      "model": "qwen3-embedding:8b-fp16"
     }
   },
   "retriever": {

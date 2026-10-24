@@ -1,6 +1,7 @@
 'use client';
 
 import React, {useEffect, useState} from 'react';
+import {flushSync} from 'react-dom';
 import {useLanguage} from '@/contexts/LanguageContext';
 import UserSelector from './UserSelector';
 import WikiTypeSelector from './WikiTypeSelector';
@@ -114,15 +115,17 @@ export default function ModelSelectionModal({
 
   // Handler for applying changes
   const handleApply = () => {
-    setProvider(localProvider);
-    setModel(localModel);
-    setIsCustomModel(localIsCustomModel);
-    setCustomModel(localCustomModel);
-    setIsComprehensiveView(localIsComprehensiveView);
-    if (setExcludedDirs) setExcludedDirs(localExcludedDirs);
-    if (setExcludedFiles) setExcludedFiles(localExcludedFiles);
-    if (setIncludedDirs) setIncludedDirs(localIncludedDirs);
-    if (setIncludedFiles) setIncludedFiles(localIncludedFiles);
+    flushSync(() => {
+      setProvider(localProvider);
+      setModel(localModel);
+      setIsCustomModel(localIsCustomModel);
+      setCustomModel(localCustomModel);
+      setIsComprehensiveView(localIsComprehensiveView);
+      if (setExcludedDirs) setExcludedDirs(localExcludedDirs);
+      if (setExcludedFiles) setExcludedFiles(localExcludedFiles);
+      if (setIncludedDirs) setIncludedDirs(localIncludedDirs);
+      if (setIncludedFiles) setIncludedFiles(localIncludedFiles);
+    });
 
     // Pass token to onApply if needed
     if (showTokenInput) {
