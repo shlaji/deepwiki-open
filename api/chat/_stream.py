@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from adalflow.core.types import ModelType
 
@@ -21,7 +21,8 @@ if TYPE_CHECKING:
 
     from api.clients import OpenAIClient
 
-MODEL_CFG = dict[str, str | int | float]
+MODEL_CFG = dict[str, Any]
+INITIALIZE_KWARGS = dict[str, Any]
 
 logger = get_logger("chat")
 
@@ -31,6 +32,15 @@ class ChatStreamer(ABC):
     provider: str
     error_hint: str | None = None
 
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ) -> None:
+        del model, model_config, initialize_kwargs
+
     def __init_subclass__(cls, **kwargs) -> None:
         super().__init_subclass__(**kwargs)
         if provider := getattr(cls, "provider", None):
@@ -38,14 +48,25 @@ class ChatStreamer(ABC):
 
     @classmethod
     def create(
-        cls, *, provider: str, model: str | None = None, model_config: MODEL_CFG
+        cls,
+        *,
+        provider: str,
+        model: str | None = None,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS | None = None,
     ) -> "ChatStreamer":
-        model = model or model_config.get("model")
-        logger.info("Using %s with model: %s", provider, model)
         registered = ChatStreamer._registry.get(provider, None)
-        if registered:
-            return registered(model=model, model_config=model_config)
-        raise RuntimeError(f"Provider {provider} not registered")
+        if not registered:
+            raise RuntimeError(f"Provider {provider} not registered")
+        model = model or cast(str | None, model_config.get("model"))
+        if model is None:
+            raise ValueError(f"No model configured for provider '{provider}'")
+        logger.info("Using %s with model: %s", provider, model)
+        return registered(
+            model=model,
+            model_config=model_config,
+            initialize_kwargs=initialize_kwargs or {},
+        )
 
     @abstractmethod
     def respond_stream(self, prompt: str) -> AsyncIterator[str]:
@@ -57,10 +78,16 @@ class ChatStreamer(ABC):
 class OllamaChatStreamer(ChatStreamer):
     provider = "ollama"
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
         from adalflow.components.model_client.ollama_client import OllamaClient
 
-        self.client = OllamaClient()
+        self.client = OllamaClient(**initialize_kwargs)
         self.model_kwargs = {
             "model": model,
             "stream": True,
@@ -104,15 +131,21 @@ class OpenRouterChatStreamer(ChatStreamer):
         "environment variable with a valid API key."
     )
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
-        if not OPENROUTER_API_KEY:
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
+        if not OPENROUTER_API_KEY and not initialize_kwargs.get("api_key"):
             logger.warning(
                 "OPENROUTER_API_KEY not configured, but continuing with request"
             )
             # We'll let the OpenRouterClient handle this and return a friendly error message
         from api.clients import OpenRouterClient
 
-        self.client = OpenRouterClient()
+        self.client = OpenRouterClient(**initialize_kwargs)
         self.model_kwargs = {
             "model": model,
             "stream": True,
@@ -138,8 +171,14 @@ class _OpenAICompatStreamer(ChatStreamer):
     client: "OpenAIClient"
     model_kwargs: dict
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
-        self.client = self._build_client()
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
+        self.client = self._build_client(initialize_kwargs)
         self.model_kwargs = {
             "model": model,
             "stream": True,
@@ -150,7 +189,7 @@ class _OpenAICompatStreamer(ChatStreamer):
             self.model_kwargs["top_p"] = model_config["top_p"]
 
     @abstractmethod
-    def _build_client(self) -> "OpenAIClient":
+    def _build_client(self, initialize_kwargs: INITIALIZE_KWARGS) -> "OpenAIClient":
         raise NotImplementedError(
             f"{type(self).__name__} must return an `OpenAIClient` instance"
         )
@@ -180,16 +219,26 @@ class OpenAIChatStreamer(_OpenAICompatStreamer):
         "environment variable with a valid API key."
     )
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
         if not OPENAI_API_KEY:
             logger.warning("OPENAI_API_KEY not configured, but continuing with request")
 
-        super().__init__(model=model, model_config=model_config)
+        super().__init__(
+            model=model,
+            model_config=model_config,
+            initialize_kwargs=initialize_kwargs,
+        )
 
-    def _build_client(self):
+    def _build_client(self, initialize_kwargs: INITIALIZE_KWARGS):
         from api.clients import OpenAIClient
 
-        return OpenAIClient()
+        return OpenAIClient(**initialize_kwargs)
 
 
 class AzureChatStreamer(_OpenAICompatStreamer):
@@ -200,10 +249,10 @@ class AzureChatStreamer(_OpenAICompatStreamer):
         "environment variables with valid values."
     )
 
-    def _build_client(self):
+    def _build_client(self, initialize_kwargs: INITIALIZE_KWARGS):
         from api.clients import AzureAIClient
 
-        return AzureAIClient()
+        return AzureAIClient(**initialize_kwargs)
 
 
 class LiteLLMChatStreamer(_OpenAICompatStreamer):
@@ -213,19 +262,29 @@ class LiteLLMChatStreamer(_OpenAICompatStreamer):
         "environment variable with a valid API key."
     )
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
         if not LITELLM_API_KEY:
             logger.warning(
                 "LITELLM_API_KEY not configured, but continuing with request"
             )
             # We'll let the OpenAIClient handle this and return an error message
 
-        super().__init__(model=model, model_config=model_config)
+        super().__init__(
+            model=model,
+            model_config=model_config,
+            initialize_kwargs=initialize_kwargs,
+        )
 
-    def _build_client(self):
+    def _build_client(self, initialize_kwargs: INITIALIZE_KWARGS):
         from api.clients import LiteLLMClient
 
-        return LiteLLMClient()
+        return LiteLLMClient(**initialize_kwargs)
 
 
 class BedrockChatStreamer(ChatStreamer):
@@ -235,7 +294,13 @@ class BedrockChatStreamer(ChatStreamer):
         "and AWS_SECRET_ACCESS_KEY environment variables with valid credentials."
     )
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
         if not AWS_ACCESS_KEY_ID or not AWS_SECRET_ACCESS_KEY:
             logger.warning(
                 "AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY not configured, but continuing with request"
@@ -243,7 +308,7 @@ class BedrockChatStreamer(ChatStreamer):
             # We'll let the BedrockClient handle this and return an error message
         from api.clients import BedrockClient
 
-        self.client = BedrockClient()
+        self.client = BedrockClient(**initialize_kwargs)
         self.model_kwargs = {"model": model}
 
         for key in (
@@ -275,10 +340,16 @@ class DashScopeChatStreamer(ChatStreamer):
         "DASHSCOPE_WORKSPACE_ID) environment variables with valid values."
     )
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
         from api.clients import DashscopeClient
 
-        self.client = DashscopeClient()
+        self.client = DashscopeClient(**initialize_kwargs)
         self.model_kwargs = {
             "model": model,
             "stream": True,
@@ -304,11 +375,17 @@ class DashScopeChatStreamer(ChatStreamer):
 class GoogleGenerativeChatStreamer(ChatStreamer):
     provider = "google"
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
         import google.generativeai as genai
         from google.generativeai.types import GenerationConfig
 
-        genai.configure(api_key=GOOGLE_API_KEY)
+        genai.configure(api_key=GOOGLE_API_KEY, **initialize_kwargs)
 
         self.client = genai.GenerativeModel(
             model_name=model,
@@ -329,7 +406,13 @@ class GoogleGenerativeChatStreamer(ChatStreamer):
 class AnthropicChatStreamer(ChatStreamer):
     provider = "anthropic"
 
-    def __init__(self, *, model: str, model_config: MODEL_CFG):
+    def __init__(
+        self,
+        *,
+        model: str,
+        model_config: MODEL_CFG,
+        initialize_kwargs: INITIALIZE_KWARGS,
+    ):
         from api.config import (
             AWS_ACCESS_KEY_ID,
             AWS_REGION,
@@ -339,12 +422,14 @@ class AnthropicChatStreamer(ChatStreamer):
 
         from ..clients.anthropic import AnthropicBedrockClient
 
-        self.client = AnthropicBedrockClient(
-            aws_access_key_id=AWS_ACCESS_KEY_ID,
-            aws_session_token=AWS_SESSION_TOKEN,
-            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-            aws_region=AWS_REGION,
-        )
+        client_kwargs = {
+            "aws_access_key_id": AWS_ACCESS_KEY_ID,
+            "aws_session_token": AWS_SESSION_TOKEN,
+            "aws_secret_access_key": AWS_SECRET_ACCESS_KEY,
+            "aws_region": AWS_REGION,
+        }
+        client_kwargs.update(initialize_kwargs)
+        self.client = AnthropicBedrockClient(**client_kwargs)
 
         self.model_kwargs = {
             "model": model,
