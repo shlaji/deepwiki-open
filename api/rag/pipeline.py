@@ -473,6 +473,34 @@ class DatabaseManager:
         logger.info(f"Total documents: {len(documents)}")
         transformed_docs = self.db.get_transformed_data(key="split_and_embed")
         logger.info(f"Total transformed documents: {len(transformed_docs)}")
+
+        # Validate that embeddings were actually generated
+        if transformed_docs:
+            empty_count = sum(
+                1
+                for d in transformed_docs
+                if not getattr(d, "vector", None)
+                or _embedding_vector_length(d) == 0
+            )
+            if empty_count == len(transformed_docs):
+                raise ValueError(
+                    f"Embedding generation failed: all {len(transformed_docs)} transformed "
+                    f"documents have empty vectors. Check that the embedder API is configured "
+                    f"correctly (embedder_type={embedder_type or 'auto'}) and the API key is valid."
+                )
+            elif empty_count > 0:
+                logger.warning(
+                    " %s / %s transformed documents have empty embeddings; proceeding with %s valid",
+                    empty_count,
+                    len(transformed_docs),
+                    len(transformed_docs) - empty_count,
+                )
+        else:
+            raise ValueError(
+                f"No transformed documents produced. {len(documents)} source files were read "
+                f"but the embedding pipeline returned 0 chunks. This usually means the text "
+                f"splitter produced no output (files may be empty or all excluded by filters)."
+            )
         return transformed_docs
 
     def prepare_retriever(

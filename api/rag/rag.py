@@ -196,14 +196,27 @@ class RAG(adal.Component):
             return []
 
         docs_embeddings = defaultdict(list)
+        total = len(documents)
 
         for doc, embed_size in filter(
-            lambda x: isinstance(x[0], Document) and bool(x[1]),
+            lambda x: isinstance(x[0], Document),
             ((x, _get_document_vector_size(x)) for x in documents),
         ):
             docs_embeddings[embed_size].append(doc)
-        if not docs_embeddings:
-            logger.error("No valid embeddings found in any documents")
+
+        no_vector = total - sum(len(v) for v in docs_embeddings.values())
+        sized_keys = [k for k in docs_embeddings if k is not None and k > 0]
+        unsized_keys = [k for k in docs_embeddings if k is None or k == 0]
+
+        if not sized_keys:
+            logger.error(
+                "No valid embeddings found: %s/%s documents have embeddings; "
+                "%s missing/empty vectors, sizes seen=%s",
+                total - no_vector,
+                total,
+                no_vector,
+                sorted(docs_embeddings.keys()),
+            )
             return []
 
         target_size = max(docs_embeddings, key=lambda x: len(docs_embeddings[x]))
@@ -278,7 +291,12 @@ class RAG(adal.Component):
 
         if not self.transformed_docs:
             raise ValueError(
-                "No valid documents with embeddings found. Cannot create retriever."
+                f"No valid documents with embeddings found after filtering. "
+                f"Checked {len(self.transformed_docs)} documents — this typically means: "
+                f"(1) the embedder API key is missing or invalid, "
+                f"(2) the repository has no processable files (all excluded by filters), or "
+                f"(3) the cached database was built with a different embedder type. "
+                f"Check the logs above for 'Embedding generation failed' or 'No valid embeddings found' details."
             )
 
         logger.info(
