@@ -86,6 +86,25 @@ DeepWiki now uses JSON configuration files to manage various system components i
    - Defines available model providers (Google, OpenAI, OpenRouter, AWS Bedrock, Ollama)
    - Specifies default and available models for each provider
    - Contains model-specific parameters like temperature and top_p
+   - Supports optional provider-level `initialize_kwargs`, which are passed to the
+     model client's constructor rather than to each completion request. For example,
+     configure an OpenAI-compatible endpoint while keeping `OPENAI_API_KEY` in the
+     environment:
+
+     ```json
+     {
+       "providers": {
+         "openai": {
+           "initialize_kwargs": {
+             "base_url": "${OPENAI_BASE_URL}"
+           }
+         }
+       }
+     }
+     ```
+
+     Set `OPENAI_BASE_URL` before starting the API. Do not add this placeholder
+     unless the environment variable is defined.
 
 2. **`embedder.json`**: Configuration for embedding models and text processing
    - Located in `api/config/` by default
