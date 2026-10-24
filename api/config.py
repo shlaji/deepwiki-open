@@ -402,6 +402,8 @@ def get_model_config(provider="google", model=None):
     result = {
         "model_client": model_client,
     }
+    if "initialize_kwargs" in provider_config:
+        result["initialize_kwargs"] = provider_config["initialize_kwargs"]
 
     # Provider-specific adjustments
     if provider == "ollama":

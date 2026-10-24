@@ -1,6 +1,6 @@
 import pytest
 
-from api.config import iterate_files
+from api.config import configs, get_model_config, iterate_files
 
 
 def make_repo(root):
@@ -60,3 +60,17 @@ def test_iterate_files_excluded_dirs(exclude_test_config, tmp_path, excluded_dir
     make_repo(tmp_path)
     files = set(iterate_files(root_dir=str(tmp_path), excluded_dirs=excluded_dirs))
     assert files == {"README.md", "CHANGELOG.md"}
+
+
+def test_get_model_config_preserves_provider_initialize_kwargs(monkeypatch):
+    provider_config = {
+        "model_client": object,
+        "default_model": "test-model",
+        "models": {"test-model": {"temperature": 0.2}},
+        "initialize_kwargs": {"base_url": "https://openai.example.test/v1"},
+    }
+    monkeypatch.setitem(configs["providers"], "test-provider", provider_config)
+
+    result = get_model_config("test-provider")
+
+    assert result["initialize_kwargs"] == provider_config["initialize_kwargs"]
