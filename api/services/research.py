@@ -287,11 +287,13 @@ async def research_chat(
                     error_str += f"\n\n{streamer.error_hint}"
                 yield "\n" + error_str
 
-    model_config = get_model_config(request.provider, request.model)["model_kwargs"]
+    generator_config = get_model_config(request.provider, request.model)
+    model_config = generator_config["model_kwargs"]
     chat_streamer = ChatStreamer.create(
         provider=request.provider,
         model=request.model,
         model_config=model_config,
+        initialize_kwargs=generator_config.get("initialize_kwargs"),
     )
 
     prompt_kwargs = {

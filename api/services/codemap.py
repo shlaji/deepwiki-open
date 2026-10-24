@@ -239,13 +239,15 @@ async def generate_codemap(request: CodeMapRequest) -> AsyncIterator[str]:
     context_text = _format_context(documents) if documents else ""
     yield _phase("analyzing", "done", chunk_count=len(documents))
 
-    model_config = get_model_config(request.provider, request.model)["model_kwargs"]
+    generator_config = get_model_config(request.provider, request.model)
+    model_config = generator_config["model_kwargs"]
 
     def _new_streamer() -> ChatStreamer:
         return ChatStreamer.create(
             provider=request.provider,
             model=request.model,
             model_config=model_config,
+            initialize_kwargs=generator_config.get("initialize_kwargs"),
         )
 
     # ---- Phase 1b: initial codemap skeleton ---------------------------------------
