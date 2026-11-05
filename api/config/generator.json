@@ -2,7 +2,7 @@
   "default_provider": "ollama",
   "providers": {
     "openai": {
-      "default_model": "gpt-6-luna",
+      "default_model": "qwen3.8-flash",
       "initialize_kwargs": {
         "api_key": "${OPENAI_API_KEY}",
         "base_url": "${OPENAI_BASE_URL}"
@@ -12,10 +12,10 @@
         "gpt-6-luna": {
           "temperature": 1.0
         },
-        "gpt-6-luna-fast": {
+        "qwen3.8-max": {
           "temperature": 1.0
         },
-        "gpt-6.1-sol": {
+        "qwen3.8-flash": {
           "temperature": 1.0
         }
       }
