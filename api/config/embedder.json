@@ -5,9 +5,9 @@
       "api_key": "${OPENAI_API_KEY}",
       "base_url": "${OPENAI_BASE_URL}"
     },
-    "batch_size": 16,
+    "batch_size": 10,
     "model_kwargs": {
-      "model": "text-embedding-v3",
+      "model": "qwen3.7-text-embedding",
       "dimensions": 256,
       "encoding_format": "float"
     }
