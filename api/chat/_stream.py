@@ -1,8 +1,16 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import TYPE_CHECKING, Any, cast
 
 from adalflow.core.types import ModelType
+from openai.types.chat import ChatCompletionChunk
+from openai.types.responses import (
+    ResponseCompletedEvent,
+    ResponseErrorEvent,
+    ResponseFailedEvent,
+    ResponseIncompleteEvent,
+    ResponseTextDeltaEvent,
+)
 
 from api.config import (
     AWS_ACCESS_KEY_ID,
@@ -17,7 +25,7 @@ from api.logger import get_logger
 if TYPE_CHECKING:
     from ollama import ChatResponse
     from openai import AsyncStream
-    from openai.types.chat import ChatCompletionChunk
+    from openai.types.responses import ResponseStreamEvent
 
     from api.clients import OpenAIClient
 
@@ -194,22 +202,45 @@ class _OpenAICompatStreamer(ChatStreamer):
             f"{type(self).__name__} must return an `OpenAIClient` instance"
         )
 
-    async def respond_stream(self, prompt: str) -> AsyncIterator[str]:
+    async def respond_stream(self, prompt: str) -> AsyncGenerator[str, None]:
         api_kwargs = self.client.convert_inputs_to_api_kwargs(
             input=prompt, model_kwargs=self.model_kwargs, model_type=ModelType.LLM
         )
-        response: "AsyncStream[ChatCompletionChunk]" = await self.client.acall(
+        response: "AsyncStream[ChatCompletionChunk | ResponseStreamEvent]" = await self.client.acall(
             api_kwargs=api_kwargs,
             model_type=ModelType.LLM,
         )
 
-        async for chunk in response:
-            if (
-                chunk.choices
-                and chunk.choices[0].delta is not None
-                and chunk.choices[0].delta.content is not None
-            ):
-                yield chunk.choices[0].delta.content
+        async with response:
+            async for chunk in response:
+                match chunk:
+                    case ChatCompletionChunk():
+                        if (
+                            chunk.choices
+                            and chunk.choices[0].delta is not None
+                            and chunk.choices[0].delta.content is not None
+                        ):
+                            yield chunk.choices[0].delta.content
+                    case ResponseTextDeltaEvent():
+                        yield chunk.delta
+                    case ResponseCompletedEvent():
+                        return
+                    case ResponseErrorEvent():
+                        raise RuntimeError(f"{chunk.code}: {chunk.message}")
+                    case ResponseFailedEvent():
+                        error = chunk.response.error
+                        detail = f"{error.code}: {error.message}" if error else "response.failed"
+                        raise RuntimeError(detail)
+                    case ResponseIncompleteEvent():
+                        details = chunk.response.incomplete_details
+                        reason = details.reason if details else "response.incomplete"
+                        raise RuntimeError(f"Incomplete response: {reason}")
+                    case _:
+                        # Lifecycle, reasoning, tool and done events contain no new output text.
+                        continue
+
+        if self.provider == "openai":
+            raise RuntimeError("Responses stream ended before response.completed")
 
 
 class OpenAIChatStreamer(_OpenAICompatStreamer):
